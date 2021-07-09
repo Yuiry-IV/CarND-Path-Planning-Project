@@ -149,10 +149,8 @@ car_state update_lane_and_velocity( const car_state &state,
       } 
       /// all lanes are taken
       else {
-         /// reduce car velocity, but not less then zero
-         if( new_state.velocity_current - velocity_delta > 0 ) { 
-            new_state.velocity_current -= velocity_delta;
-         }
+         /// reduce car velocity 
+         new_state.velocity_current -= velocity_delta;
       }
    } 
    /// lane is free
