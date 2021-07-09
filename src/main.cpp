@@ -20,10 +20,12 @@ using std::vector;
 
 #include "constants.h"
 
+/// convert MPH value to m/s
 inline double mph_to_ms( double mph) noexcept {
    return ((mph*K_MILE_TO_KM)*M_IN_KM)/SEC_PER_HOUR;
 }
 
+/// convert d value to lane index
 inline int d_to_lane( double d) noexcept {
    int lane = -1;
    if(d >= LANE_WIDTH*0.0 && d < LANE_WIDTH*1.0) {
@@ -36,23 +38,9 @@ inline int d_to_lane( double d) noexcept {
    return lane;
 }
 
+/// convert lane index to d value. Set car to the center of lane. 
 inline double lane_to_d( int lane ) noexcept {
-   double d = LANE_WIDTH*0.5 + LANE_WIDTH*lane;
-   
-   /*
-   // adjust car position from the edge of road
-   switch(lane){
-     case 0:
-      d += LANE_WIDTH*0.0625;
-      break;
-     case 2:
-      d -= LANE_WIDTH*0.0625;
-      break;
-     default: 
-      break;
-   }
-   */
-   
+   double d = LANE_WIDTH*0.5 + LANE_WIDTH*lane;   
    return d;
 }
 
@@ -64,6 +52,7 @@ struct sensor_fusion_result {
 };
 
 
+/// process sensors information
 inline 
 sensor_fusion_result 
 process_sensor_fusion( const int lane, 
@@ -82,21 +71,12 @@ process_sensor_fusion( const int lane,
       const int other_car_id = sensor_fusion[i][0];
       const double other_car_d = sensor_fusion[i][6];
       const int other_car_lane=d_to_lane(other_car_d);
-
+      
+      /// ignore cars located off-road. 
       if( other_car_lane == -1 ){
          // std::cerr<<id<<" is out of road, and will be ignored."<<std::endl;
          continue;
       }
-
-
-      const double other_car_x=sensor_fusion[i][1];
-      const double other_car_y=sensor_fusion[i][2];
-
-
-      const double vx=sensor_fusion[i][3];
-      const double vy=sensor_fusion[i][4];
-      
-      const double other_car_speed = std::sqrt(vx*vx+vy*vy);
          
       const double other_car_s = sensor_fusion[i][5]; 
             
@@ -110,27 +90,29 @@ process_sensor_fusion( const int lane,
          std::cerr <<std::endl;
       }
       
-      const double deltaF = SENSOR_FUSION_FRONT_BUFFER_K*(end_path_s - car_s); // forward 5/4 x path lenght 
-      const double deltaB = SENSOR_FUSION_BACK_BUFFER_K*(end_path_s - car_s); // backward 3/4 x path lenght 
+      const double deltaF = SENSOR_FUSION_FRONT_BUFFER_K*(end_path_s - car_s); /// forward buffer size 5/4 x path lenght 
+      const double deltaB = SENSOR_FUSION_BACK_BUFFER_K*(end_path_s - car_s); /// backward buffer size 3/4 x path lenght 
       
+      /// other car in front of ego car:
       if(other_car_lane == lane) {
-         // other car in front of ego car:
+         /// and car is in the buffer
          if( other_car_s > car_s && (other_car_s - car_s) < deltaF ){
-            //std::cout<<"SF:front:id:"<<other_car_id<<" in {"<<(other_car_s - car_s);
-            //std::cout<<(car_d - other_car_d)<<"}";
-            //std::cout<<std::endl;
             result.car_ahead = true;
          }           
-      } else if((other_car_lane - lane) == -1) {
-         // other car in left range of ego car
+      } 
+      /// other car in left of ego car 
+      else if((other_car_lane - lane) == -1) {
+         /// and car is in the buffer
          if( (car_s+deltaF) > other_car_s  && (car_s-deltaB) < other_car_s ){
             //std::cout<<"SF:_left:id:"<<other_car_id<<" in {"<<(other_car_s - car_s);
             //std::cout<<(car_d - other_car_d)<<"}";
             //std::cout<<std::endl;
             result.car_left = true;
          }
-      } else if((other_car_lane - lane) == 1) {
-         // other car in right range of ego car
+      } 
+      /// other car in right of ego car
+      else if((other_car_lane - lane) == 1) {
+         /// and car is in the buffer
          if( (car_s+deltaF) > other_car_s  && (car_s-deltaB) < other_car_s ){
             //std::cout<<"SF:right:id:"<<other_car_id<<" in {"<<(other_car_s - car_s);
             //std::cout<<(car_d - other_car_d)<<"}";
@@ -147,34 +129,42 @@ struct car_state {
    int lane;
    double velocity_current;
 };
-
+/// implement car behavior. Update car lane and car velocity
 car_state update_lane_and_velocity( const car_state &state,
    const sensor_fusion_result result, 
    const double & velocity_delta, 
    const double & velocity_max ) noexcept {
    
    car_state new_state = state;
-   
+   /// lane is taken by other car
    if(result.car_ahead) {
+      /// no car on lane from left and lane can be changed
       if(!result.car_left && new_state.lane > 0) {
          new_state.lane--;
-      } else if(!result.car_right && new_state.lane < 2) {
+      
+      }
+      /// no car on lane from right and lane can be changed      
+      else if(!result.car_right && new_state.lane < 2) {
          new_state.lane++;
-      } else {
+      } 
+      /// all lanes are taken
+      else {
+         /// reduce car velocity, but not less then zero
          if( new_state.velocity_current - velocity_delta > 0 ) { 
             new_state.velocity_current -= velocity_delta;
          }
       }
-   } else {
-      // Not in the center lane. Check if it is safe to move back
-      
+   } 
+   /// lane is free
+   else {
+      /// Car on one of side lanes   
       if( new_state.lane != 1 ) {
+         /// move to the center lane, if possible
 		   if ((new_state.lane == 2 && !result.car_left) || (new_state.lane == 0 && !result.car_right)) {
-			   // Move back to the center lane
 			   new_state.lane = 1;
 		   }
       }      
-        
+      /// Increase velocity to speed limit 
       if(new_state.velocity_current < velocity_max){
          new_state.velocity_current += velocity_delta;
       }
@@ -187,7 +177,7 @@ struct path {
    vector<double> next_x_vals; 
    vector<double> next_y_vals;
 };
-
+/// generate path
 path generate_path( const car_state &new_state,
                   const double car_x,
                   const double car_y,
@@ -210,22 +200,23 @@ path generate_path( const car_state &new_state,
    vector<double> ptsx;
    vector<double> ptsy;
 
-   //Refrence x,y, and yaw states
+   /// Refrence x,y, and yaw states
    double ref_x = car_x;
    double ref_y = car_y;
    double ref_yaw = deg2rad(car_yaw);
 
-   // If previous states are almost empty, use the car as a startting point
+   /// previous states are almost empty, use the car as a startting point
    if ( prev_size < 2 ) {
-      //Use two points thats makes path tangent to the car
+      /// Use two points thats makes path tangent to the car
       double prev_car_x = car_x - cos(car_yaw);
       double prev_car_y = car_y - sin(car_yaw);
       ptsx.push_back(prev_car_x);
       ptsx.push_back(car_x);
       ptsy.push_back(prev_car_y);
       ptsy.push_back(car_y);
-   } else {
-      //Redefine the reference point to previous point
+   } 
+   /// fill initial points from previos path
+   else {
       ref_x = previous_path_x[prev_size - 1];
       ref_y = previous_path_y[prev_size - 1];
 
@@ -239,7 +230,7 @@ path generate_path( const car_state &new_state,
       ptsy.push_back(ref_y);
    }
 
-   // Setting up target points in the future.
+   /// Setting up 3 target points in the future.
    for( unsigned i=0; i<3; ++i){
       vector<double> wp( getXY( car_s + PATH_FUTURE_STEP_SIZE*(1+i), 
             lane_to_d(new_state.lane), 
@@ -251,7 +242,7 @@ path generate_path( const car_state &new_state,
       ptsy.push_back(wp[1]);
    }
    
-   // Making coordinates to local car coordinates.
+   /// Transform coordinates to local car coordinates.
    for ( unsigned i = 0; i < ptsx.size(); i++ ) {
       double shift_x = ptsx[i] - ref_x;
       double shift_y = ptsy[i] - ref_y;
@@ -260,17 +251,17 @@ path generate_path( const car_state &new_state,
       ptsy[i] = shift_x * sin(0 - ref_yaw) + shift_y * cos(0 - ref_yaw);
    }
    
-   // create the spline.
+   /// create the spline.
    tk::spline s;
    s.set_points(ptsx, ptsy);
 
-   //For the smooth transition, we are adding previous path points
+   /// For more smoothes of transition, add previous path points
    for ( unsigned i = 0; i < prev_size; i++ ) {
       new_path.next_x_vals.push_back(previous_path_x[i]);
       new_path.next_y_vals.push_back(previous_path_y[i]);
    }
 
-   // Calculate distance y position on 51 m ahead.
+   /// Calculate distance y position ahead.
    double target_x = PATH_POS_AHEAD;
    double target_y = s(target_x);
    double target_dist = sqrt(target_x*target_x + target_y*target_y);
@@ -279,6 +270,7 @@ path generate_path( const car_state &new_state,
 
    const unsigned count = PATH_NUMBER_OF_POINTS - prev_size;
 
+   /// Add smooth points
    for( unsigned i = 1; i <count; i++ ) {
 
       double N = double(PATH_NUMBER_OF_POINTS) * 
@@ -291,7 +283,7 @@ path generate_path( const car_state &new_state,
       double x_ref = x_point;
       double y_ref = y_point;
 
-      //Rotate back to normal after rotating it earlier
+      /// Rotate back to normal after rotating it earlier
       x_point = x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw);
       y_point = x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw);
 
@@ -304,7 +296,7 @@ path generate_path( const car_state &new_state,
    return new_path;
 }
 
-
+/// main control function
 void do_highway_driving( vector<double>& next_x_vals, 
                   vector<double>& next_y_vals,
                   const vector<double>& previous_path_x,
@@ -325,15 +317,15 @@ void do_highway_driving( vector<double>& next_x_vals,
 	               const vector<double>& map_waypoints_y,
 	               const vector<double>& map_waypoints_s                  
    ){
-   // process car environment      
+   /// process car environment      
    sensor_fusion_result result = process_sensor_fusion( lane,
                         car_x, car_y, car_s, car_d, end_path_s, car_speed, telemetry );
    
-   // update car parametrs according to control strategy 
+   /// update car parametrs according to control strategy 
    car_state new_state = update_lane_and_velocity( car_state{lane, velocity_current},
             result, velocity_delta, velocity_max );
    
-   // generate a path
+   /// generate a path
    path new_path = generate_path(new_state, 
                         car_x,
                         car_y,
@@ -445,14 +437,16 @@ int main() {
           vector<double> next_y_vals;
           
           /** 
-            .FILL THE PATH
+            .GENERATE THE PATH
             */
+          /// leftovers from class work
           //fill_next_1(next_x_vals, next_y_vals);
           //fill_next_2(next_x_vals, next_y_vals,
           //  previous_path_x,previous_path_y,
           //  car_x, car_y, car_yaw
-          //);      
+          //);
           
+          /// call control function
           do_highway_driving(next_x_vals, next_y_vals,
             previous_path_x,previous_path_y,
             car_x, car_y, car_s, car_d, car_yaw, car_speed,
@@ -462,7 +456,7 @@ int main() {
             map_waypoints_x, map_waypoints_y, map_waypoints_s
           );
           /**
-            .END
+            .GENERATE END
             */
 
           msgJson["next_x"] = next_x_vals;
