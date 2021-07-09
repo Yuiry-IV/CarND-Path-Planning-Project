@@ -25,7 +25,8 @@ const unsigned PATH_NUMBER_OF_POINTS = 50U;
 // Car velocity settings miles per hour
 const double SPEED_LIMIT=49.5;
 const double SPEED_INITIAL=0.01;
-const double SPEED_DELTA=0.224;
+const double SPEED_DELTA_U=0.224;
+const double SPEED_DELTA_D=0.294;
 
 #endif 
 

@@ -132,7 +132,7 @@ struct car_state {
 /// implement car behavior. Update car lane and car velocity
 car_state update_lane_and_velocity( const car_state &state,
    const sensor_fusion_result result, 
-   const double & velocity_delta, 
+    
    const double & velocity_max ) noexcept {
    
    car_state new_state = state;
@@ -150,7 +150,7 @@ car_state update_lane_and_velocity( const car_state &state,
       /// all lanes are taken
       else {
          /// reduce car velocity 
-         new_state.velocity_current -= velocity_delta;
+         new_state.velocity_current -= SPEED_DELTA_D;
       }
    } 
    /// lane is free
@@ -164,7 +164,7 @@ car_state update_lane_and_velocity( const car_state &state,
       }      
       /// Increase velocity to speed limit 
       if(new_state.velocity_current < velocity_max){
-         new_state.velocity_current += velocity_delta;
+         new_state.velocity_current += SPEED_DELTA_U;
       }
    }
    return new_state;
@@ -309,8 +309,8 @@ void do_highway_driving( vector<double>& next_x_vals,
                   const nlohmann::json &telemetry,
                   int &lane,
                   double &velocity_current,
-	               double &velocity_delta,
 	               double &velocity_max,
+	               
 	               const vector<double>& map_waypoints_x,
 	               const vector<double>& map_waypoints_y,
 	               const vector<double>& map_waypoints_s                  
@@ -321,7 +321,7 @@ void do_highway_driving( vector<double>& next_x_vals,
    
    /// update car parametrs according to control strategy 
    car_state new_state = update_lane_and_velocity( car_state{lane, velocity_current},
-            result, velocity_delta, velocity_max );
+            result, velocity_max );
    
    /// generate a path
    path new_path = generate_path(new_state, 
@@ -386,12 +386,12 @@ int main() {
   
   //Reference velocity.
   double velocity_current = SPEED_INITIAL; 
-  double velocity_delta = SPEED_DELTA;
+  
   double velocity_max = SPEED_LIMIT;
 	
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,
-               &lane, &velocity_current, &velocity_delta, &velocity_max
+               &lane, &velocity_current, &velocity_max
                ]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
@@ -450,7 +450,7 @@ int main() {
             car_x, car_y, car_s, car_d, car_yaw, car_speed,
             end_path_s,
             j[1],
-            lane, velocity_current, velocity_delta, velocity_max,
+            lane, velocity_current, velocity_max,
             map_waypoints_x, map_waypoints_y, map_waypoints_s
           );
           /**
